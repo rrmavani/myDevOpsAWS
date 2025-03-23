@@ -128,21 +128,11 @@ data "aws_ami" "AmazonLinux" {
     values = ["Amazon Linux 2023 AMI * x86_64 HVM kernel-*"]
   }
 }
-#output "ami" {
-#  value  = data.aws_ami.AmazonLinux
-#}
 
 ### Create Roles
 
-#data "aws_iam_role" "MySQSRole" {
-#  name = "MySQSRole"
-#}
-#output "MySQSRole" {
-#  value = data.aws_iam_role.MySQSRole
-#}
-
-resource "aws_iam_role" "MySQSRole" {
-  name = "MySQSRole"
+resource "aws_iam_role" "MyWebRole" {
+  name = "MyWebRole"
   description = "Allows EC2 instances to call AWS services on your behalf."
   assume_role_policy = jsonencode({
     "Version": "2012-10-17",
@@ -158,31 +148,81 @@ resource "aws_iam_role" "MySQSRole" {
   })
 }
 
+resource "aws_iam_role" "MyWorkerRole" {
+  name = "MyWorkerRole"
+  description = "Allows EC2 instances to call AWS services on your behalf."
+  assume_role_policy = jsonencode({
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Principal": {
+                "Service": "ec2.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+        }
+    ]
+  })
+}
+
+
 data "aws_iam_policy" "AmazonSQSFullAccess" {
   name = "AmazonSQSFullAccess"
 }
 
-resource "aws_iam_role_policy_attachment" "MySQSRole_attachment" {
-  role       = resource.aws_iam_role.MySQSRole.name
+data "aws_iam_policy" "CloudWatchFullAccess" {
+  name = "CloudWatchFullAccessV2"
+}
+
+resource "aws_iam_role_policy_attachment" "MyWebRole_SQS_attachment" {
+  role       = resource.aws_iam_role.MyWebRole.name
   policy_arn = data.aws_iam_policy.AmazonSQSFullAccess.arn
 }
 
-resource "aws_iam_instance_profile" "MySQSRole_profile" {
-  name = "MySQSRole_profile"
-  role = resource.aws_iam_role.MySQSRole.name
+resource "aws_iam_role_policy_attachment" "MyWorkerRole_CloudWatch_attachment" {
+  role       = resource.aws_iam_role.MyWorkerRole.name
+  policy_arn = data.aws_iam_policy.CloudWatchFullAccess.arn
 }
 
+resource "aws_iam_role_policy_attachment" "MyWorkerRole_SQS_attachment" {
+  role       = resource.aws_iam_role.MyWorkerRole.name
+  policy_arn = data.aws_iam_policy.AmazonSQSFullAccess.arn
+}
+
+resource "aws_iam_instance_profile" "MyWebRole_profile" {
+  name = "MyWebRole_profile"
+  role = resource.aws_iam_role.MyWebRole.name
+}
+
+resource "aws_iam_instance_profile" "MyWorkerRole_profile" {
+  name = "MyWorkerRole_profile"
+  role = resource.aws_iam_role.MyWorkerRole.name
+}
 
 ### Create Launch Templates
 
 resource "aws_launch_template" "MyWebLaunchTemplate" {
   name                 = "MyWebLaunchTemplate"
+  update_default_version = true
   image_id             = data.aws_ami.AmazonLinux.id
   instance_type        = "t2.micro"
   key_name             = "myKey"
   security_group_names = [resource.aws_security_group.MyWebSecurityGroup.name]
   iam_instance_profile {
-    arn = resource.aws_iam_instance_profile.MySQSRole_profile.arn
+    arn = resource.aws_iam_instance_profile.MyWebRole_profile.arn
   }
   user_data            = base64encode(replace(file("${path.module}/user_data/MyWebUserData.sh"), "<SQS-URL>", resource.aws_sqs_queue.MySQS.url))
+}
+
+resource "aws_launch_template" "MyWorkerLaunchTemplate" {
+  name                 = "MyWorkerLaunchTemplate"
+  update_default_version = true
+  image_id             = data.aws_ami.AmazonLinux.id
+  instance_type        = "t2.micro"
+  key_name             = "myKey"
+  security_group_names = [resource.aws_security_group.MyWorkerSecurityGroup.name]
+  iam_instance_profile {
+    arn = resource.aws_iam_instance_profile.MyWorkerRole_profile.arn
+  }
+  user_data            = base64encode(replace(file("${path.module}/user_data/MyWorkerUserData.sh"), "<SQS-URL>", resource.aws_sqs_queue.MySQS.url))
 }
