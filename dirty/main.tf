@@ -207,7 +207,7 @@ resource "aws_launch_template" "MyWebLaunchTemplate" {
   image_id             = data.aws_ami.AmazonLinux.id
   instance_type        = "t2.micro"
   key_name             = "myKey"
-  security_group_names = [resource.aws_security_group.MyWebSecurityGroup.name]
+  vpc_security_group_ids   = [resource.aws_security_group.MyWebSecurityGroup.id]
   iam_instance_profile {
     arn = resource.aws_iam_instance_profile.MyWebRole_profile.arn
   }
@@ -220,9 +220,89 @@ resource "aws_launch_template" "MyWorkerLaunchTemplate" {
   image_id             = data.aws_ami.AmazonLinux.id
   instance_type        = "t2.micro"
   key_name             = "myKey"
-  security_group_names = [resource.aws_security_group.MyWorkerSecurityGroup.name]
+  vpc_security_group_ids   = [resource.aws_security_group.MyWorkerSecurityGroup.id]
   iam_instance_profile {
     arn = resource.aws_iam_instance_profile.MyWorkerRole_profile.arn
   }
   user_data            = base64encode(replace(file("${path.module}/user_data/MyWorkerUserData.sh"), "<SQS-URL>", resource.aws_sqs_queue.MySQS.url))
 }
+
+#### Create MyWebTargetGroup
+resource "aws_lb_target_group" "MyWebTargetGroup" {
+  name     = "MyWebTargetGroup"
+  port     = 80
+  protocol = "HTTP"
+  target_type = "instance"
+  vpc_id   = resource.aws_default_vpc.default_vpc.id
+}
+
+
+#### Create Load Balancer
+
+data "aws_subnets" "default_vpc_subnet" {
+  filter {
+    name   = "vpc-id"
+    values = [resource.aws_default_vpc.default_vpc.id]
+  }
+}
+
+resource "aws_lb" "MyWebLoadBalancer" {
+  name               = "MyWebLoadBalancer"
+  internal           = false
+  load_balancer_type = "application"
+  ip_address_type    = "ipv4"
+  subnets            = data.aws_subnets.default_vpc_subnet.ids  
+  security_groups    = [resource.aws_security_group.MyLBSecurityGroup.id]
+}
+
+resource "aws_lb_listener" "MyWebLoadBalancer_Listener" {
+  load_balancer_arn = resource.aws_lb.MyWebLoadBalancer.arn
+  port              = "80"
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = resource.aws_lb_target_group.MyWebTargetGroup.arn
+  }
+}
+
+#### Create Auto Scalling Groups
+data "aws_availability_zones" "available" {}
+
+resource "aws_autoscaling_group" "MyWebAutoScalingGroup" {
+  name               = "MyWebAutoScalingGroup"
+  availability_zones = data.aws_availability_zones.available.names
+  desired_capacity   = 1
+  max_size           = 4
+  min_size           = 1
+
+  launch_template {
+    id      = aws_launch_template.MyWebLaunchTemplate.id
+    version = aws_launch_template.MyWebLaunchTemplate.latest_version
+  }
+
+  target_group_arns = [resource.aws_lb_target_group.MyWebTargetGroup.arn]
+}
+
+resource "aws_autoscaling_group" "MyWorkerAutoScalingGroup" {
+  name               = "MyWorkerAutoScalingGroup"
+  availability_zones = data.aws_availability_zones.available.names
+  desired_capacity   = 1
+  max_size           = 3
+  min_size           = 1
+
+  launch_template {
+    id      = aws_launch_template.MyWorkerLaunchTemplate.id
+    version = aws_launch_template.MyWorkerLaunchTemplate.latest_version
+  }
+
+  instance_refresh {
+    strategy    = "Rolling"
+    triggers    = ["launch_template"]
+  }
+}
+
+output "MyWebLoadBalancer" {
+  value = resource.aws_lb.MyWebLoadBalancer.dns_name
+}
+
