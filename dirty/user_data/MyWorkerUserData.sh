@@ -44,18 +44,17 @@ while true; do
 
     # Log the processed message
     echo "$(date '+%Y-%m-%d %H:%M:%S') Processing order_id=$order_id from $source" >> /var/log/queue.log
-
+    aws sqs delete-message --queue-url https://sqs.us-east-1.amazonaws.com/975050183964/MySQS --region us-east-1 --receipt-handle "$receipt_handle"
     # Send metric to CloudWatch
     aws cloudwatch put-metric-data --namespace WorkerMetrics --metric-name OrdersProcessed --value 1 --region us-east-1
 
     # Simulate processing time
-    sleep 30
+    sleep 10
 
     # Delete the message from SQS using the stored receipt_handle
-    aws sqs delete-message --queue-url https://sqs.us-east-1.amazonaws.com/975050183964/MySQS --region us-east-1 --receipt-handle "$receipt_handle"
   else
     # Log if no message was received (optional debugging)
     echo "$(date '+%Y-%m-%d %H:%M:%S') No message received" >> /var/log/queue.log
   fi
-  sleep 10
+  sleep 1
 done

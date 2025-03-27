@@ -296,11 +296,40 @@ resource "aws_autoscaling_group" "MyWorkerAutoScalingGroup" {
     version = aws_launch_template.MyWorkerLaunchTemplate.latest_version
   }
 
-  instance_refresh {
-    strategy    = "Rolling"
-    triggers    = ["launch_template"]
-  }
 }
+
+resource "aws_autoscaling_policy" "MyWorkerAutoScalingPolicy" {
+  name                          = "MyWorkerAutoScalingPolicy"
+  autoscaling_group_name        = resource.aws_autoscaling_group.MyWorkerAutoScalingGroup.name
+  policy_type                   = "TargetTrackingScaling"
+  target_tracking_configuration {
+    customized_metric_specification {
+      metric_name = "ApproximateNumberOfMessagesVisible"  
+      namespace   = "AWS/SQS"
+      statistic   = "Average"
+      metric_dimension {
+        name  = "QueueName"
+        value = "MySQS"
+      }
+    }
+    target_value = 5
+  }
+} 
+
+resource "aws_autoscaling_policy" "MyWebAutoScalingPolicy" {
+  name                          = "MyWebAutoScalingPolicy"
+  autoscaling_group_name        = resource.aws_autoscaling_group.MyWebAutoScalingGroup.name
+  policy_type                   = "TargetTrackingScaling"
+  target_tracking_configuration {
+    predefined_metric_specification {
+      predefined_metric_type  = "ALBRequestCountPerTarget"
+      resource_label          = "${aws_lb.MyWebLoadBalancer.arn_suffix}/${aws_lb_target_group.MyWebTargetGroup.arn_suffix}"
+    }
+    target_value = 5
+  }
+  
+} 
+
 
 output "MyWebLoadBalancer" {
   value = resource.aws_lb.MyWebLoadBalancer.dns_name
