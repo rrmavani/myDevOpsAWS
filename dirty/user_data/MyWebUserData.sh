@@ -7,7 +7,7 @@ echo "<h1>Submit Order</h1><form action='/submit' method='POST'><input type='sub
 QUEUE_URL="<SQS-URL>"
 cat << EOF > /var/www/html/submit.sh
 #!/bin/bash
-aws sqs send-message --queue-url ${QUEUE_URL} --region us-east-1 --message-body "{\"order_id\": "$RANDOM", \"task\": \"process_order\", \"timestamp\": \"$(date '+%Y-%m-%d %H:%M:%S')\", \"source\": \"$(hostname)\"}" > /dev/null 2>&1
+aws sqs send-message --queue-url ${QUEUE_URL} --region us-east-1 --message-body "{\"order_id\": \"\$RANDOM\", \"task\": \"process_order\", \"timestamp\": \"\$(date '+%Y-%m-%d %H:%M:%S')\", \"source\": \"$(hostname)\"}" > /dev/null 2>&1
 echo "Content-type: text/html"
 echo ""
 echo "<html><body><h1>Order Submitted</h1><p>Order has been sent to the queue.</p></body></html>"

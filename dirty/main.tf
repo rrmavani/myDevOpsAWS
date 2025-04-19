@@ -280,7 +280,16 @@ resource "aws_autoscaling_group" "MyWebAutoScalingGroup" {
     id      = aws_launch_template.MyWebLaunchTemplate.id
     version = aws_launch_template.MyWebLaunchTemplate.latest_version
   }
-
+  
+  # Add instance refresh configuration
+  instance_refresh {
+    strategy = "Rolling"
+    preferences {
+      min_healthy_percentage = 0  
+      instance_warmup       = 60  # Allow 1 minutes for new instances to start
+    }
+    triggers = ["launch_template"]  # Refresh when launch_template changes
+  }
   target_group_arns = [resource.aws_lb_target_group.MyWebTargetGroup.arn]
 }
 
@@ -296,6 +305,15 @@ resource "aws_autoscaling_group" "MyWorkerAutoScalingGroup" {
     version = aws_launch_template.MyWorkerLaunchTemplate.latest_version
   }
 
+  # Add instance refresh configuration
+  instance_refresh {
+    strategy = "Rolling"
+    preferences {
+      min_healthy_percentage = 0  
+      instance_warmup       = 60  # Allow 1 minutes for new instances to start
+    }
+    triggers = ["launch_template"]  # Refresh when launch_template changes
+  }
 }
 
 resource "aws_autoscaling_policy" "MyWorkerAutoScalingPolicy" {
